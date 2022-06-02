@@ -260,6 +260,7 @@ const (
 )
 
 var (
+	ErrBlocked            = errors.New("blocked string match found in body")
 	errRouteLookupFailed  = &proxyError{err: errRouteLookup}
 	errCircuitBreakerOpen = &proxyError{
 		err:              errors.New("circuit breaker open"),
@@ -925,7 +926,14 @@ func (p *Proxy) makeBackendRequest(ctx *context, requestContext stdlibcontext.Co
 
 	ctx.proxySpan.LogKV("http_roundtrip", EndEvent)
 	if err != nil {
-		p.tracing.setTag(ctx.proxySpan, ErrorTag, true)
+
+		if errors.Is(err, ErrBlocked) {
+			p.tracing.setTag(ctx.proxySpan, BlockTag, true)
+			p.tracing.setTag(ctx.proxySpan, HTTPStatusCodeTag, uint16(http.StatusBadRequest))
+			return nil, &proxyError{err: err, code: http.StatusBadRequest}
+		} else {
+			p.tracing.setTag(ctx.proxySpan, ErrorTag, true)
+		}
 
 		// Check if the request has been cancelled or timed out
 		// The roundtrip error `err` may be different:
